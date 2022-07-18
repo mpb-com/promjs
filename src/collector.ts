@@ -1,4 +1,3 @@
-import { filter, matches, each } from 'lodash';
 import { Labels, Metric, MetricValue } from './types';
 import { findExistingMetric } from './utils';
 
@@ -28,11 +27,24 @@ export abstract class Collector<T extends MetricValue> {
   }
 
   collect(labels?: Labels): Metric<T>[] {
-    return filter(this.data, item => matches(labels)(item.labels));
+    if (!labels) {
+      return this.data;
+    }
+    return this.data.filter((item) => {
+      if (!item.labels) {
+        return false;
+      }
+      for (const [label, value] of Object.entries(labels)) {
+        if (item.labels[label] !== value) {
+          return false;
+        }
+      }
+      return true;
+    });
   }
 
   resetAll(): this {
-    each(this.data, (d) => {
+    this.data.forEach((d) => {
       this.reset(d.labels);
     });
 

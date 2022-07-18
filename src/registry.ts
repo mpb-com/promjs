@@ -1,11 +1,10 @@
-import { each, has, reduce, valuesIn } from 'lodash';
 import { Collector } from './collector';
 import { Counter } from './counter';
 import { Gauge } from './gauge';
 import { Histogram } from './histogram';
 import { CollectorType, CounterValue, HistogramValue, Metric } from './types';
 
-import { formatCounterOrGauge, formatHistogramOrSummary } from './utils';
+import { formatCounterOrGauge, formatHistogramOrSummary, has } from './utils';
 
 type CollectorForType<T extends CollectorType> =
   T extends 'histogram' ? Histogram :
@@ -98,29 +97,32 @@ export class Registry {
    * @return {string}
    */
   metrics(): string {
-    return reduce(this.data,
-      (output, metrics, type) => output + reduce(metrics, (src, metric, name) => {
-        const values = metric.instance.collect();
-        let result = src;
-        if (metric.help.length > 0) {
-          result += `# HELP ${name} ${metric.help}\n`;
-        }
-        result += `# TYPE ${name} ${type}\n`;
-        // Each metric can have many labels. Iterate over each and append to the string.
-        result += reduce(values, (str, value) => {
-          const formatted = type === 'histogram'
-            ? formatHistogramOrSummary(name, value as Metric<HistogramValue>)
-            : formatCounterOrGauge(name, value as Metric<CounterValue>);
-          return str + formatted;
-        }, '');
-        return result;
-      }, ''),
-      '');
+    return Object.entries(this.data).reduce(
+      (output, [type, metrics]) => output + Object.entries(metrics).reduce(
+        (src, [name, metric]) => {
+          const values = metric.instance.collect();
+          let result = src;
+          if (metric.help.length > 0) {
+            result += `# HELP ${name} ${metric.help}\n`;
+          }
+          result += `# TYPE ${name} ${type}\n`;
+          // Each metric can have many labels. Iterate over each and append to the string.
+          result += values.reduce((str: string, value: any) => {
+            const formatted = type === 'histogram'
+              ? formatHistogramOrSummary(name, value as Metric<HistogramValue>)
+              : formatCounterOrGauge(name, value as Metric<CounterValue>);
+            return str + formatted;
+          }, '');
+          return result;
+        }, ''
+      ),
+      ''
+    );
   }
 
   reset(): this {
-    each(this.data, (metrics) => {
-      each(metrics, ({ instance }) => {
+    Object.values(this.data).forEach((metrics) => {
+      Object.values(metrics).forEach(({ instance }) => {
         instance.resetAll();
       });
     });
@@ -144,7 +146,7 @@ export class Registry {
   get(type: 'histogram', name: string): Histogram | undefined;
 
   get(type: CollectorType, name: string): Collector<any> | undefined {
-    const registryItems = type != null ? [this.data[type]] : valuesIn(this.data);
+    const registryItems = type != null ? [this.data[type]] : Object.values(this.data);
     const metric = registryItems.find(v => has(v, name));
 
     return metric != null ? metric[name].instance : undefined;
